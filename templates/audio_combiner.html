@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Combiner - Papla Voice Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        /* Audio Combiner Specific Styles */
+        .audio-combiner-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .combiner-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .combiner-header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .combiner-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .upload-section {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+        }
+        
+        .upload-area {
+            border: 2px dashed rgba(56, 189, 248, 0.5);
+            border-radius: 12px;
+            padding: 40px 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: rgba(56, 189, 248, 0.05);
+        }
+        
+        .upload-area:hover {
+            border-color: rgba(56, 189, 248, 0.8);
+            background: rgba(56, 189, 248, 0.1);
+        }
+        
+        .upload-area.dragover {
+            border-color: #38bdf8;
+            background: rgba(56, 189, 248, 0.2);
+            transform: scale(1.02);
+        }
+        
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+        
+        .file-input {
+            display: none;
+        }
+        
+        .audio-files-list {
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .audio-file-item {
+            background: rgba(30, 41, 59, 0.6);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            transition: all 0.2s ease;
+        }
+        
+        .audio-file-item:hover {
+            border-color: rgba(56, 189, 248, 0.4);
+            transform: translateY(-1px);
+        }
+        
+        .audio-file-info {
+            flex: 1;
+        }
+        
+        .audio-file-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .audio-file-details {
+            font-size: 0.85rem;
+            opacity: 0.8;
+        }
+        
+        .audio-file-preview {
+            width: 60px;
+            height: 60px;
+            background: rgba(56, 189, 248, 0.1);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .audio-file-preview:hover {
+            background: rgba(56, 189, 248, 0.2);
+        }
+        
+        .remove-file-btn {
+            background: rgba(248, 113, 113, 0.2);
+            border: none;
+            color: #f87171;
+            border-radius: 6px;
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .remove-file-btn:hover {
+            background: rgba(248, 113, 113, 0.3);
+        }
+        
+        .pause-config-section {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+        }
+        
+        .config-group {
+            margin-bottom: 20px;
+        }
+        
+        .config-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        .pause-type-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .pause-type-btn {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            background: rgba(30, 41, 59, 0.6);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .pause-type-btn.active {
+            background: rgba(56, 189, 248, 0.2);
+            border-color: #38bdf8;
+        }
+        
+        .range-inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .input-group input {
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            background: rgba(30, 41, 59, 0.6);
+            color: inherit;
+        }
+        
+        .timeline-section {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            margin-bottom: 30px;
+        }
+        
+        .timeline-container {
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 12px;
+            padding: 20px;
+            min-height: 120px;
+            position: relative;
+            overflow-x: auto;
+        }
+        
+        .timeline-track {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            min-height: 60px;
+            position: relative;
+        }
+        
+        .timeline-audio-block {
+            background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+            border-radius: 6px;
+            padding: 10px 15px;
+            color: #0f172a;
+            font-weight: 600;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 80px;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .timeline-audio-block:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(56, 189, 248, 0.4);
+        }
+        
+        .timeline-pause-block {
+            background: rgba(148, 163, 184, 0.3);
+            border: 1px dashed rgba(148, 163, 184, 0.5);
+            border-radius: 6px;
+            padding: 10px;
+            color: #94a3b8;
+            font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            position: relative;
+        }
+        
+        .export-section {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            margin-bottom: 30px;
+        }
+        
+        .export-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .format-selector {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .format-btn {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            background: rgba(30, 41, 59, 0.6);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .format-btn.active {
+            background: rgba(56, 189, 248, 0.2);
+            border-color: #38bdf8;
+        }
+        
+        .quality-selector {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .quality-slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(148, 163, 184, 0.3);
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        .quality-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #38bdf8;
+            cursor: pointer;
+        }
+        
+        .quality-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #38bdf8;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+        
+        .combine-btn {
+            background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+            border: none;
+            border-radius: 12px;
+            padding: 15px 40px;
+            color: #0f172a;
+            font-weight: 700;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 200px;
+        }
+        
+        .combine-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(56, 189, 248, 0.4);
+        }
+        
+        .combine-btn:disabled {
+            background: rgba(148, 163, 184, 0.3);
+            color: #94a3b8;
+            cursor: not-allowed;
+        }
+        
+        .progress-section {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            margin-bottom: 30px;
+            display: none;
+        }
+        
+        .progress-section.active {
+            display: block;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(148, 163, 184, 0.3);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #38bdf8, #0ea5e9);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        
+        .progress-text {
+            text-align: center;
+            font-weight: 500;
+            margin-bottom: 10px;
+        }
+        
+        .progress-details {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+        
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #38bdf8;
+            text-decoration: none;
+            margin-bottom: 20px;
+            transition: all 0.2s ease;
+        }
+        
+        .back-link:hover {
+            color: #0ea5e9;
+            transform: translateX(-2px);
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 1024px) {
+            .combiner-layout {
+                grid-template-columns: 1fr;
+            }
+            
+            .export-options {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .audio-combiner-container {
+                padding: 15px;
+            }
+            
+            .combiner-header h1 {
+                font-size: 2rem;
+            }
+            
+            .range-inputs {
+                grid-template-columns: 1fr;
+            }
+            
+            .progress-details {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+            
+            .combine-btn {
+                width: 100%;
+            }
+        }
+        
+        /* Loading Animation */
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(56, 189, 248, 0.3);
+            border-radius: 50%;
+            border-top-color: #38bdf8;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Tooltip */
+        .tooltip {
+            position: relative;
+            cursor: help;
+        }
+        
+        .tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.95);
+            color: #e2e8f0;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            z-index: 1000;
+        }
+        
+        .tooltip:hover::after {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <div class="audio-combiner-container">
+            <a href="{{ url_for('index') }}" class="back-link">
+                ← Back to Voice Generator
+            </a>
+            
+            <div class="combiner-header">
+                <h1>Audio Combiner</h1>
+                <p>Combine multiple audio files with customizable pauses and export in various formats</p>
+            </div>
+            
+            <!-- Upload Section -->
+            <div class="combiner-layout">
+                <div class="upload-section">
+                    <h2 class="section-heading">Upload Audio Files</h2>
+                    
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-icon">📁</div>
+                        <h3>Drop audio files here or click to browse</h3>
+                        <p>Supports MP3, WAV, M4A, OGG, WEBM formats</p>
+                        <p style="margin-top: 10px; font-size: 0.9rem; opacity: 0.7;">Multiple files can be selected</p>
+                        <input type="file" id="fileInput" class="file-input" multiple accept="audio/*">
+                    </div>
+                    
+                    <div class="audio-files-list" id="audioFilesList"></div>
+                </div>
+                
+                <!-- Pause Configuration Section -->
+                <div class="pause-config-section">
+                    <h2 class="section-heading">Pause Configuration</h2>
+                    
+                    <div class="config-group">
+                        <label>Pause Type:</label>
+                        <div class="pause-type-selector">
+                            <button class="pause-type-btn active" data-type="uniform">
+                                Uniform Pauses
+                            </button>
+                            <button class="pause-type-btn" data-type="random">
+                                Random Pauses
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="uniformConfig" class="config-group">
+                        <label>Uniform Pause Duration:</label>
+                        <div class="input-group">
+                            <input type="number" id="uniformDuration" value="2.0" min="0.1" max="10" step="0.1">
+                            <small>Duration in seconds (0.1 - 10s)</small>
+                        </div>
+                    </div>
+                    
+                    <div id="randomConfig" class="config-group" style="display: none;">
+                        <label>Random Pause Range:</label>
+                        <div class="range-inputs">
+                            <div class="input-group">
+                                <input type="number" id="minDuration" value="1.0" min="0.1" max="10" step="0.1">
+                                <small>Minimum (seconds)</small>
+                            </div>
+                            <div class="input-group">
+                                <input type="number" id="maxDuration" value="3.0" min="0.1" max="10" step="0.1">
+                                <small>Maximum (seconds)</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="config-group">
+                        <label>
+                            <input type="checkbox" id="addPauseAtStart" style="margin-right: 8px;">
+                            Add pause at the beginning
+                        </label>
+                        <label>
+                            <input type="checkbox" id="addPauseAtEnd" style="margin-right: 8px;">
+                            Add pause at the end
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Timeline Section -->
+            <div class="timeline-section">
+                <h2 class="section-heading">Audio Timeline</h2>
+                <div class="timeline-container">
+                    <div class="timeline-track" id="timelineTrack">
+                        <div style="text-align: center; color: #94a3b8; padding: 20px;">
+                            Upload audio files to see the timeline
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Export Section -->
+            <div class="export-section">
+                <h2 class="section-heading">Export Settings</h2>
+                
+                <div class="export-options">
+                    <div class="config-group">
+                        <label>Output Format:</label>
+                        <div class="format-selector">
+                            <button class="format-btn active" data-format="mp3">MP3</button>
+                            <button class="format-btn" data-format="wav">WAV</button>
+                            <button class="format-btn" data-format="m4a">M4A</button>
+                        </div>
+                    </div>
+                    
+                    <div class="config-group">
+                        <label>Quality: <span id="qualityValue">Medium</span></label>
+                        <div class="quality-selector">
+                            <input type="range" id="qualitySlider" class="quality-slider" min="1" max="3" value="2">
+                            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; opacity: 0.7;">
+                                <span>Low</span>
+                                <span>Medium</span>
+                                <span>High</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Progress Section -->
+            <div class="progress-section" id="progressSection">
+                <h2 class="section-heading">Combining Audio</h2>
+                <div class="progress-text" id="progressText">Initializing...</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-details">
+                    <div>
+                        <strong>Files Processed:</strong>
+                        <span id="filesProcessed">0</span> / <span id="totalFiles">0</span>
+                    </div>
+                    <div>
+                        <strong>Current File:</strong>
+                        <span id="currentFile">-</span>
+                    </div>
+                    <div>
+                        <strong>Time Remaining:</strong>
+                        <span id="timeRemaining">-</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <button class="combine-btn" id="combineBtn" disabled>
+                    Combine Audio Files
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Global variables
+        let uploadedFiles = [];
+        let tempDir = null;
+        let pauseType = 'uniform';
+        let outputFormat = 'mp3';
+        let quality = 'medium';
+        
+        // DOM elements
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const audioFilesList = document.getElementById('audioFilesList');
+        const timelineTrack = document.getElementById('timelineTrack');
+        const combineBtn = document.getElementById('combineBtn');
+        const progressSection = document.getElementById('progressSection');
+        
+        // Initialize event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            setupUploadHandlers();
+            setupPauseConfigHandlers();
+            setupExportHandlers();
+            setupCombineHandler();
+        });
+        
+        // Upload handlers
+        function setupUploadHandlers() {
+            uploadArea.addEventListener('click', () => fileInput.click());
+            
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+            
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
+            
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                handleFiles(e.dataTransfer.files);
+            });
+            
+            fileInput.addEventListener('change', (e) => {
+                handleFiles(e.target.files);
+            });
+        }
+        
+        async function handleFiles(files) {
+            if (files.length === 0) return;
+            
+            const formData = new FormData();
+            Array.from(files).forEach(file => {
+                formData.append('files', file);
+            });
+            
+            try {
+                const response = await fetch('/api/upload-audio', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    tempDir = result.temp_dir;
+                    uploadedFiles = result.files;
+                    updateFilesList();
+                    updateTimeline();
+                    updateCombineButton();
+                } else {
+                    showError(result.error || 'Upload failed');
+                }
+            } catch (error) {
+                showError('Upload failed: ' + error.message);
+            }
+        }
+        
+        function updateFilesList() {
+            audioFilesList.innerHTML = '';
+            
+            uploadedFiles.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'audio-file-item';
+                fileItem.innerHTML = `
+                    <div class="audio-file-preview" onclick="previewAudio('${file.id}')">
+                        🔊
+                    </div>
+                    <div class="audio-file-info">
+                        <div class="audio-file-name">${file.name}</div>
+                        <div class="audio-file-details">
+                            ${formatFileSize(file.size)} • ${formatDuration(file.duration)}
+                        </div>
+                    </div>
+                    <button class="remove-file-btn" onclick="removeFile(${index})">
+                        Remove
+                    </button>
+                `;
+                audioFilesList.appendChild(fileItem);
+            });
+        }
+        
+        function updateTimeline() {
+            if (uploadedFiles.length === 0) {
+                timelineTrack.innerHTML = `
+                    <div style="text-align: center; color: #94a3b8; padding: 20px;">
+                        Upload audio files to see the timeline
+                    </div>
+                `;
+                return;
+            }
+            
+            timelineTrack.innerHTML = '';
+            
+            // Add pause at start if enabled
+            if (document.getElementById('addPauseAtStart').checked) {
+                const pauseBlock = createPauseBlock('Start');
+                timelineTrack.appendChild(pauseBlock);
+            }
+            
+            // Add audio files and pauses between them
+            uploadedFiles.forEach((file, index) => {
+                const audioBlock = createAudioBlock(file, index);
+                timelineTrack.appendChild(audioBlock);
+                
+                // Add pause between files (except after the last one)
+                if (index < uploadedFiles.length - 1) {
+                    const pauseDuration = getPauseDuration(index);
+                    const pauseBlock = createPauseBlock(pauseDuration);
+                    timelineTrack.appendChild(pauseBlock);
+                }
+            });
+            
+            // Add pause at end if enabled
+            if (document.getElementById('addPauseAtEnd').checked) {
+                const pauseBlock = createPauseBlock('End');
+                timelineTrack.appendChild(pauseBlock);
+            }
+        }
+        
+        function createAudioBlock(file, index) {
+            const block = document.createElement('div');
+            block.className = 'timeline-audio-block';
+            block.textContent = `${index + 1}. ${file.name.substring(0, 10)}...`;
+            block.title = file.name;
+            return block;
+        }
+        
+        function createPauseBlock(duration) {
+            const block = document.createElement('div');
+            block.className = 'timeline-pause-block';
+            block.textContent = typeof duration === 'number' ? `${duration}s` : 'Pause';
+            return block;
+        }
+        
+        function getPauseDuration(index) {
+            if (pauseType === 'uniform') {
+                return parseFloat(document.getElementById('uniformDuration').value);
+            } else {
+                const min = parseFloat(document.getElementById('minDuration').value);
+                const max = parseFloat(document.getElementById('maxDuration').value);
+                // Use index as seed for consistent random values
+                const random = Math.sin(index * 12.9898) * 43758.5453;
+                return min + (random - Math.floor(random)) * (max - min);
+            }
+        }
+        
+        // Pause configuration handlers
+        function setupPauseConfigHandlers() {
+            document.querySelectorAll('.pause-type-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.pause-type-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    pauseType = this.dataset.type;
+                    
+                    document.getElementById('uniformConfig').style.display = 
+                        pauseType === 'uniform' ? 'block' : 'none';
+                    document.getElementById('randomConfig').style.display = 
+                        pauseType === 'random' ? 'block' : 'none';
+                    
+                    updateTimeline();
+                });
+            });
+            
+            // Update timeline when pause settings change
+            ['uniformDuration', 'minDuration', 'maxDuration', 'addPauseAtStart', 'addPauseAtEnd'].forEach(id => {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.addEventListener('change', updateTimeline);
+                    element.addEventListener('input', updateTimeline);
+                }
+            });
+        }
+        
+        // Export configuration handlers
+        function setupExportHandlers() {
+            document.querySelectorAll('.format-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    outputFormat = this.dataset.format;
+                });
+            });
+            
+            const qualitySlider = document.getElementById('qualitySlider');
+            const qualityValue = document.getElementById('qualityValue');
+            
+            qualitySlider.addEventListener('input', function() {
+                const qualities = ['Low', 'Medium', 'High'];
+                qualityValue.textContent = qualities[this.value - 1];
+                quality = qualities[this.value - 1].toLowerCase();
+            });
+        }
+        
+        // Combine handler
+        function setupCombineHandler() {
+            combineBtn.addEventListener('click', combineAudioFiles);
+        }
+        
+        async function combineAudioFiles() {
+            if (uploadedFiles.length === 0) {
+                showError('Please upload audio files first');
+                return;
+            }
+            
+            // Show progress section
+            progressSection.classList.add('active');
+            combineBtn.disabled = true;
+            combineBtn.innerHTML = '<span class="loading-spinner"></span> Combining...';
+            
+            // Prepare pause configuration
+            const pauseConfig = {
+                type: pauseType,
+                addPauseAtStart: document.getElementById('addPauseAtStart').checked,
+                addPauseAtEnd: document.getElementById('addPauseAtEnd').checked
+            };
+            
+            if (pauseType === 'uniform') {
+                pauseConfig.uniform_duration = parseFloat(document.getElementById('uniformDuration').value);
+            } else {
+                pauseConfig.min_duration = parseFloat(document.getElementById('minDuration').value);
+                pauseConfig.max_duration = parseFloat(document.getElementById('maxDuration').value);
+            }
+            
+            // Prepare export configuration
+            const exportConfig = {
+                format: outputFormat,
+                quality: quality
+            };
+            
+            try {
+                // Simulate progress updates
+                await simulateProgress();
+                
+                const response = await fetch('/api/combine-audio-with-pauses', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        files: uploadedFiles,
+                        pause_config: pauseConfig,
+                        export_config: exportConfig,
+                        temp_dir: tempDir
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    updateProgress(100, 'Combination complete!', 'All files processed', '0s');
+                    
+                    // Download the combined file
+                    setTimeout(() => {
+                        window.location.href = result.download_url;
+                        resetProgress();
+                    }, 2000);
+                } else {
+                    showError(result.error || 'Combination failed');
+                    resetProgress();
+                }
+            } catch (error) {
+                showError('Combination failed: ' + error.message);
+                resetProgress();
+            }
+        }
+        
+        async function simulateProgress() {
+            const steps = [
+                { progress: 20, text: 'Loading audio files...', file: 'Reading metadata' },
+                { progress: 40, text: 'Processing audio files...', file: 'Applying effects' },
+                { progress: 60, text: 'Generating pauses...', file: 'Creating silence' },
+                { progress: 80, text: 'Combining audio...', file: 'Merging tracks' },
+                { progress: 95, text: 'Finalizing export...', file: 'Encoding output' }
+            ];
+            
+            for (const step of steps) {
+                updateProgress(
+                    step.progress, 
+                    step.text, 
+                    step.file, 
+                    `${Math.ceil((100 - step.progress) / 10)}s`
+                );
+                await new Promise(resolve => setTimeout(resolve, 800));
+            }
+        }
+        
+        function updateProgress(progress, text, currentFile, timeRemaining) {
+            document.getElementById('progressFill').style.width = progress + '%';
+            document.getElementById('progressText').textContent = text;
+            document.getElementById('filesProcessed').textContent = 
+                Math.ceil((progress / 100) * uploadedFiles.length);
+            document.getElementById('totalFiles').textContent = uploadedFiles.length;
+            document.getElementById('currentFile').textContent = currentFile;
+            document.getElementById('timeRemaining').textContent = timeRemaining;
+        }
+        
+        function resetProgress() {
+            progressSection.classList.remove('active');
+            combineBtn.disabled = false;
+            combineBtn.textContent = 'Combine Audio Files';
+            updateProgress(0, 'Initializing...', '-', '-');
+        }
+        
+        // Utility functions
+        function removeFile(index) {
+            uploadedFiles.splice(index, 1);
+            updateFilesList();
+            updateTimeline();
+            updateCombineButton();
+        }
+        
+        function updateCombineButton() {
+            combineBtn.disabled = uploadedFiles.length === 0;
+        }
+        
+        function previewAudio(fileId) {
+            const file = uploadedFiles.find(f => f.id === fileId);
+            if (file) {
+                // In a real implementation, you'd play the audio file
+                alert(`Preview: ${file.name}\nDuration: ${formatDuration(file.duration)}`);
+            }
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        function formatDuration(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        function showError(message) {
+            alert('Error: ' + message);
+        }
+    </script>
+</body>
+</html>

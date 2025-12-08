@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Papla Voice Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="page">
+        <div class="layout">
+            <div class="sidebar">
+                <div class="card search-card">
+                    <h2 class="section-heading">Settings</h2>
+                    <form method="POST" class="search-form">
+                        <div class="api-key-block">
+                            <label for="api_key">API Key:</label>
+                            <input type="password" id="api_key" name="api_key" value="{{ api_key }}" placeholder="Enter your Papla API key">
+                        </div>
+                    </form>
+
+                    {% if voice_warning %}
+                    <div class="alert" style="background: rgba(248, 113, 113, 0.15); border-color: rgba(248, 113, 113, 0.4);">
+                        {{ voice_warning }}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="content">
+                <div class="card" style="margin-bottom: 16px;">
+                    <h2 class="section-heading">Generate from PDF</h2>
+                    <p style="margin-bottom: 12px; font-size: 0.9rem; opacity: 0.8;">
+                        Upload a PDF script and we will generate one voiceover clip for every
+                        one to two speakable lines, skipping timestamps and obvious instructions.
+                    </p>
+                    <form id="pdf-upload-form" class="search-form" enctype="multipart/form-data" onsubmit="return false;">
+                        <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+                            <input type="file" id="pdf_file" name="pdf_file" accept="application/pdf" style="flex: 1 1 240px;">
+                            <select id="pdf_filter_mode" name="filter_mode" style="flex: 0 0 180px; padding: 8px; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.4); background: rgba(15,23,42,0.8); color: inherit;">
+                                <option value="strict" selected>Strict filtering</option>
+                                <option value="loose">Loose filtering</option>
+                            </select>
+                            <button type="button" id="pdf-generate-btn" class="primary-btn" style="flex: 0 0 200px;">
+                                Generate from PDF
+                            </button>
+                        </div>
+                        <small id="pdf-status" class="helper-text" style="margin-top: 8px;"></small>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <form method="POST" class="search-form">
+                        <input type="hidden" name="api_key" value="{{ api_key }}">
+
+                        <label for="voice">Voice:</label>
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                            <select id="voice" name="voice" style="flex: 0 0 220px;">
+                                {% for option in voices %}
+                                <option value="{{ option.voice_id }}" {% if option.voice_id == voice %}selected{% endif %}>{{ option.display_name }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="button" id="voice-preview-btn" class="secondary-btn" style="flex: 0 0 160px;">
+                                Preview Voice
+                            </button>
+                        </div>
+                        <small id="voice-preview-status" class="helper-text"></small>
+                        <audio id="voice-preview-audio" controls style="margin-top: 8px; width: 100%; display: none;">
+                            <source id="voice-preview-source" src="" type="">
+                            Your browser does not support the audio element.
+                        </audio>
+
+                        <div id="scripts-container" class="scripts-grid">
+                            {% for i in range(scripts|length) %}
+                            <div class="script-block" data-index="{{ i }}">
+                                <label for="script_{{ i + 1 }}">Script {{ i + 1 }}:</label>
+                                <textarea id="script_{{ i + 1 }}" name="script_{{ i + 1 }}" rows="8" maxlength="{{ max_characters }}" placeholder="Enter the text you want to convert to speech (max {{ max_characters }} characters)...">{{ scripts[i] if scripts and i < scripts|length else '' }}</textarea>
+                                <small class="helper-text">Characters used: <span class="char-count" data-target="script_{{ i + 1 }}">{{ scripts[i]|length if scripts and i < scripts|length else 0 }}</span> / {{ max_characters }}</small>
+                                <button type="button" class="generate-script-btn primary-btn" data-index="{{ i }}">Generate Script {{ i + 1 }}</button>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        
+                        <div class="scripts-actions">
+                            <button type="submit" name="generate_all" value="true" class="primary-btn">Generate All Voices</button>
+                            <button type="button" id="add-script-btn" class="secondary-btn">Add Script</button>
+                        </div>
+                    </form>
+
+                    {% if error %}
+                    <div class="alert">
+                        {{ error }}
+                    </div>
+                    {% endif %}
+
+                    {% if status %}
+                    <div class="alert" style="background: rgba(34, 197, 94, 0.15); border-color: rgba(34, 197, 94, 0.4);">
+                        {{ status }}
+                    </div>
+                    {% endif %}
+
+                    {% if audio_sources %}
+                    <div class="section-divider"></div>
+                    <h2 class="section-heading">Generated Audio</h2>
+                    
+                    <div class="audio-actions">
+                        <button id="download-all-btn" class="primary-btn">
+                            Download All Audio Files
+                        </button>
+                    </div>
+                    
+                    {% for audio in audio_sources %}
+                    <div class="audio-item">
+                        <h4>Script {{ audio.index + 1 }}: {{ audio.script }}</h4>
+                        <audio controls>
+                            <source src="{{ audio.src }}" type="{{ audio.mime }}">
+                            Your browser does not support the audio element.
+                        </audio>
+                        <a href="{{ audio.src }}" download="voice_script_{{ audio.index + 1 }}.{{ audio.extension }}" class="primary-btn">
+                            Download Script {{ audio.index + 1 }}
+                        </a>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+                    <div id="pdf-audio-container"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <style>
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            background: rgba(30, 41, 59, 0.6);
+            color: inherit;
+            font-size: 0.95rem;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 140px;
+        }
+        
+        .download-btn:hover {
+            background: linear-gradient(135deg, #0ea5e9, #0284c7);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(56, 189, 248, 0.4);
+        }
+
+        .helper-text {
+            display: block;
+            margin-top: 6px;
+            font-size: 0.85rem;
+            opacity: 0.75;
+        }
+
+        .scripts-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 18px;
+            margin-top: 16px;
+        }
+
+        .script-block {
+            background: rgba(30, 41, 59, 0.45);
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            border-radius: 12px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .script-block textarea {
+            min-height: 120px;
+        }
+
+        .scripts-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .primary-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+            border: none;
+            border-radius: 8px;
+            padding: 10px 18px;
+            color: #0f172a;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            text-decoration: none;
+        }
+
+        .primary-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(56, 189, 248, 0.35);
+        }
+
+        .secondary-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(148, 163, 184, 0.25);
+            border: 1px solid rgba(148, 163, 184, 0.4);
+            border-radius: 8px;
+            padding: 10px 18px;
+            color: inherit;
+            font-weight: 500;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            text-decoration: none;
+        }
+
+        .secondary-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(148, 163, 184, 0.25);
+        }
+
+        .scripts-actions .primary-btn,
+        .scripts-actions .secondary-btn {
+            flex: 1 1 220px;
+        }
+
+        .audio-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin: 12px 0 24px;
+        }
+
+        .audio-actions .primary-btn,
+        .audio-actions .secondary-btn {
+            flex: 1 1 220px;
+        }
+
+        .audio-item {
+            margin-bottom: 20px;
+            padding: 16px;
+            background: rgba(30, 41, 59, 0.5);
+            border-radius: 10px;
+            display: grid;
+            gap: 12px;
+        }
+
+        .audio-item h4 {
+            margin: 0;
+            font-size: 1rem;
+        }
+
+        .audio-item audio {
+            width: 100%;
+            border-radius: 8px;
+        }
+        
+        .tool-status {
+            margin: 10px 0;
+            min-height: 20px;
+        }
+        
+        .tool-status .alert {
+            margin: 0;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 1400px) {
+            .scripts-grid {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 1100px) {
+            .scripts-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 860px) {
+            .scripts-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 560px) {
+            .scripts-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+
+    <script>
+        // Character count for all textareas
+        function updateAllCharCounts() {
+            const charCounts = document.querySelectorAll('.char-count');
+            charCounts.forEach(count => {
+                const targetId = count.getAttribute('data-target');
+                const textarea = document.getElementById(targetId);
+                if (textarea) {
+                    count.textContent = textarea.value.length;
+                }
+            });
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const textareas = document.querySelectorAll('textarea');
+            textareas.forEach(textarea => {
+                textarea.addEventListener('input', updateAllCharCounts);
+            });
+            
+            updateAllCharCounts();
+            
+            // Test connection functionality
+            const testConnectionBtn = document.getElementById('test-connection-btn');
+            const connectionResult = document.getElementById('connection-result');
+            
+            if (testConnectionBtn) {
+                testConnectionBtn.addEventListener('click', function() {
+                    const apiKey = document.getElementById('api_key').value;
+                    
+                    if (!apiKey) {
+                        connectionResult.innerHTML = '<div class="alert">Please enter an API key first.</div>';
+                        return;
+                    }
+                    
+                    testConnectionBtn.disabled = true;
+                    testConnectionBtn.textContent = 'Testing...';
+                    
+                    const formData = new FormData();
+                    formData.append('api_key', apiKey);
+                    
+                    fetch('/test-connection', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            connectionResult.innerHTML = `<div class="alert" style="background: rgba(34, 197, 94, 0.15); border-color: rgba(34, 197, 94, 0.4);">${data.message}</div>`;
+                            // Refresh the page to update the voices list
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 1500);
+                        } else {
+                            connectionResult.innerHTML = `<div class="alert">${data.error}</div>`;
+                        }
+                    })
+                    .catch(error => {
+                        connectionResult.innerHTML = `<div class="alert">Connection test failed: ${error.message}</div>`;
+                    })
+                    .finally(() => {
+                        testConnectionBtn.disabled = false;
+                        testConnectionBtn.textContent = 'Test Connection';
+                    });
+                });
+            }
+
+            // Voice audio preview
+            const voicePreviewBtn = document.getElementById('voice-preview-btn');
+            const voicePreviewStatus = document.getElementById('voice-preview-status');
+            const voicePreviewAudio = document.getElementById('voice-preview-audio');
+            const voicePreviewSource = document.getElementById('voice-preview-source');
+
+            function setVoicePreviewStatus(message, kind) {
+                if (!voicePreviewStatus) return;
+                voicePreviewStatus.textContent = message || '';
+                if (kind === 'error') {
+                    voicePreviewStatus.style.color = '#fca5a5';
+                } else if (kind === 'success') {
+                    voicePreviewStatus.style.color = '#6ee7b7';
+                } else {
+                    voicePreviewStatus.style.color = '#cbd5f5';
+                }
+            }
+
+            async function handleVoicePreview() {
+                if (!voicePreviewBtn) return;
+                const apiKeyInput = document.getElementById('api_key');
+                const voiceSelect = document.getElementById('voice');
+                const apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+                const voice = voiceSelect ? voiceSelect.value : '';
+
+                if (!apiKey) {
+                    setVoicePreviewStatus('API key is required before previewing.', 'error');
+                    return;
+                }
+                if (!voice) {
+                    setVoicePreviewStatus('Please select a voice to preview.', 'error');
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('api_key', apiKey);
+                formData.append('voice', voice);
+
+                const originalText = voicePreviewBtn.textContent;
+                voicePreviewBtn.disabled = true;
+                voicePreviewBtn.textContent = 'Previewing...';
+                setVoicePreviewStatus('Generating preview…', 'info');
+
+                try {
+                    const response = await fetch('/preview-voice', {
+                        method: 'POST',
+                        body: formData,
+                    });
+                    const data = await response.json();
+
+                    if (!response.ok || !data.success) {
+                        const msg = data.error || 'Voice preview failed.';
+                        setVoicePreviewStatus(msg, 'error');
+                        return;
+                    }
+
+                    if (voicePreviewAudio && voicePreviewSource) {
+                        voicePreviewSource.src = data.src;
+                        voicePreviewSource.type = data.mime;
+                        voicePreviewAudio.style.display = 'block';
+                        voicePreviewAudio.load();
+                        try {
+                            await voicePreviewAudio.play();
+                        } catch (playErr) {
+                            // Ignore autoplay errors; user can press play manually.
+                        }
+                    }
+
+                    setVoicePreviewStatus('Playing voice preview.', 'success');
+                } catch (error) {
+                    setVoicePreviewStatus('Voice preview failed: ' + error.message, 'error');
+                } finally {
+                    voicePreviewBtn.disabled = false;
+                    voicePreviewBtn.textContent = originalText;
+                }
+            }
+
+            if (voicePreviewBtn) {
+                voicePreviewBtn.addEventListener('click', handleVoicePreview);
+            }
+            
+            const addScriptBtn = document.getElementById('add-script-btn');
+            const scriptsContainer = document.getElementById('scripts-container');
+            let scriptCount = 3; // Start with 3 scripts
+            if (addScriptBtn && scriptsContainer) {
+                addScriptBtn.addEventListener('click', function() {
+                    if (scriptCount >= 10) {
+                        alert('Maximum of 10 scripts allowed.');
+                        return;
+                    }
+                    
+                    scriptCount++;
+                    const scriptIndex = scriptCount - 1;
+                    
+                    const newScriptBlock = document.createElement('div');
+                    newScriptBlock.className = 'script-block';
+                    newScriptBlock.setAttribute('data-index', scriptIndex);
+                    newScriptBlock.innerHTML = `
+                        <label for="script_${scriptCount}">Script ${scriptCount}:</label>
+                        <textarea id="script_${scriptCount}" name="script_${scriptCount}" rows="8" maxlength="{{ max_characters }}" placeholder="Enter the text you want to convert to speech (max {{ max_characters }} characters)..."></textarea>
+                        <small class="helper-text">Characters used: <span class="char-count" data-target="script_${scriptCount}">0</span> / {{ max_characters }}</small>
+                        <button type="button" class="generate-script-btn" data-index="${scriptIndex}" style="margin-top: 8px; background: linear-gradient(135deg, #38bdf8, #0ea5e9); color: #0f172a;">Generate Script ${scriptCount}</button>
+                        <button type="button" class="remove-script-btn" style="margin-top: 5px; background: rgba(248, 113, 113, 0.2); color: #f87171;">Remove Script</button>
+                    `;
+                    
+                    scriptsContainer.appendChild(newScriptBlock);
+                    
+                    const newTextarea = newScriptBlock.querySelector('textarea');
+                    newTextarea.addEventListener('input', updateAllCharCounts);
+                    
+                    const newGenerateBtn = newScriptBlock.querySelector('.generate-script-btn');
+                    newGenerateBtn.addEventListener('click', function() {
+                        const scriptIndex = parseInt(this.getAttribute('data-index'));
+                        const scriptId = `script_${scriptIndex + 1}`;
+                        const scriptText = document.getElementById(scriptId).value;
+                        
+                        if (!scriptText.trim()) {
+                            alert(`Script ${scriptIndex + 1} is empty. Please enter some text.`);
+                            return;
+                        }
+                        
+                        const form = document.createElement('form');
+                        form.method = 'POST';
+                        form.style.display = 'none';
+                        
+                        const apiKeyInput = document.createElement('input');
+                        apiKeyInput.type = 'hidden';
+                        apiKeyInput.name = 'api_key';
+                        apiKeyInput.value = document.getElementById('api_key').value;
+                        form.appendChild(apiKeyInput);
+                        
+                        const voiceInput = document.createElement('input');
+                        voiceInput.type = 'hidden';
+                        voiceInput.name = 'voice';
+                        voiceInput.value = document.getElementById('voice').value;
+                        form.appendChild(voiceInput);
+                        
+                        const scriptInput = document.createElement('input');
+                        scriptInput.type = 'hidden';
+                        scriptInput.name = `script_${scriptIndex + 1}`;
+                        scriptInput.value = scriptText;
+                        form.appendChild(scriptInput);
+                        
+                        const allScriptBlocks = document.querySelectorAll('.script-block');
+                        allScriptBlocks.forEach((block) => {
+                            const textarea = block.querySelector('textarea');
+                            if (textarea && textarea.id !== scriptId) {
+                                const otherScriptInput = document.createElement('input');
+                                otherScriptInput.type = 'hidden';
+                                otherScriptInput.name = textarea.name;
+                                otherScriptInput.value = textarea.value;
+                                form.appendChild(otherScriptInput);
+                            }
+                        });
+                        
+                        const generateInput = document.createElement('input');
+                        generateInput.type = 'hidden';
+                        generateInput.name = 'generate';
+                        generateInput.value = 'true';
+                        form.appendChild(generateInput);
+                        
+                        const indexInput = document.createElement('input');
+                        indexInput.type = 'hidden';
+                        indexInput.name = 'script_index';
+                        indexInput.value = scriptIndex;
+                        form.appendChild(indexInput);
+                        
+                        document.body.appendChild(form);
+                        form.submit();
+                        document.body.removeChild(form);
+                    });
+                    
+                    const removeBtn = newScriptBlock.querySelector('.remove-script-btn');
+                    removeBtn.addEventListener('click', function() {
+                        if (document.querySelectorAll('.script-block').length <= 1) {
+                            alert('You must have at least one script.');
+                            return;
+                        }
+                        newScriptBlock.remove();
+                        updateAllCharCounts();
+                    });
+                    
+                    updateAllCharCounts();
+                });
+            }
+            
+            function setupGenerateButtons() {
+                const generateButtons = document.querySelectorAll('.generate-script-btn');
+                generateButtons.forEach(button => {
+                    button.addEventListener('click', function() {
+                        const scriptIndex = parseInt(this.getAttribute('data-index'));
+                        const scriptId = `script_${scriptIndex + 1}`;
+                        const scriptText = document.getElementById(scriptId).value;
+                        
+                        if (!scriptText.trim()) {
+                            alert(`Script ${scriptIndex + 1} is empty. Please enter some text.`);
+                            return;
+                        }
+                        
+                        const form = document.createElement('form');
+                        form.method = 'POST';
+                        form.style.display = 'none';
+                        
+                        const apiKeyInput = document.createElement('input');
+                        apiKeyInput.type = 'hidden';
+                        apiKeyInput.name = 'api_key';
+                        apiKeyInput.value = document.getElementById('api_key').value;
+                        form.appendChild(apiKeyInput);
+                        
+                        const voiceInput = document.createElement('input');
+                        voiceInput.type = 'hidden';
+                        voiceInput.name = 'voice';
+                        voiceInput.value = document.getElementById('voice').value;
+                        form.appendChild(voiceInput);
+                        
+                        const scriptInput = document.createElement('input');
+                        scriptInput.type = 'hidden';
+                        scriptInput.name = `script_${scriptIndex + 1}`;
+                        scriptInput.value = scriptText;
+                        form.appendChild(scriptInput);
+                        
+                        const allScriptBlocks = document.querySelectorAll('.script-block');
+                        allScriptBlocks.forEach((block) => {
+                            const textarea = block.querySelector('textarea');
+                            if (textarea && textarea.id !== scriptId) {
+                                const otherScriptInput = document.createElement('input');
+                                otherScriptInput.type = 'hidden';
+                                otherScriptInput.name = textarea.name;
+                                otherScriptInput.value = textarea.value;
+                                form.appendChild(otherScriptInput);
+                            }
+                        });
+                        
+                        const generateInput = document.createElement('input');
+                        generateInput.type = 'hidden';
+                        generateInput.name = 'generate';
+                        generateInput.value = 'true';
+                        form.appendChild(generateInput);
+                        
+                        const indexInput = document.createElement('input');
+                        indexInput.type = 'hidden';
+                        indexInput.name = 'script_index';
+                        indexInput.value = scriptIndex;
+                        form.appendChild(indexInput);
+                        
+                        document.body.appendChild(form);
+                        form.submit();
+                        document.body.removeChild(form);
+                    });
+                });
+            }
+            
+            setupGenerateButtons();
+            
+            const downloadAllBtn = document.getElementById('download-all-btn');
+            if (downloadAllBtn) {
+                downloadAllBtn.addEventListener('click', function() {
+                    const audioItems = document.querySelectorAll('.audio-item');
+                    audioItems.forEach((item, index) => {
+                        const downloadLink = item.querySelector('a[download]');
+                        if (downloadLink) {
+                            setTimeout(() => {
+                                downloadLink.click();
+                            }, index * 500);
+                        }
+                    });
+                });
+            }
+
+            // PDF upload flow
+            const pdfForm = document.getElementById('pdf-upload-form');
+            const pdfFileInput = document.getElementById('pdf_file');
+            const pdfFilterMode = document.getElementById('pdf_filter_mode');
+            const pdfGenerateBtn = document.getElementById('pdf-generate-btn');
+            const pdfStatus = document.getElementById('pdf-status');
+            const pdfAudioContainer = document.getElementById('pdf-audio-container');
+
+            function setPdfStatus(message, kind) {
+                if (!pdfStatus) return;
+                pdfStatus.textContent = message || '';
+                pdfStatus.style.color = kind === 'error' ? '#fca5a5' : kind === 'success' ? '#6ee7b7' : '#cbd5f5';
+            }
+
+            async function handlePdfGenerate() {
+                if (!pdfFileInput || !pdfGenerateBtn) return;
+                const file = pdfFileInput.files && pdfFileInput.files[0];
+                if (!file) {
+                    setPdfStatus('Please choose a PDF file first.', 'error');
+                    return;
+                }
+
+                const apiKey = document.getElementById('api_key').value;
+                const voiceSelect = document.getElementById('voice');
+                const voice = voiceSelect ? voiceSelect.value : '';
+                if (!apiKey) {
+                    setPdfStatus('API key is required before generating from PDF.', 'error');
+                    return;
+                }
+                if (!voice) {
+                    setPdfStatus('Please select a voice before generating from PDF.', 'error');
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('pdf_file', file);
+                formData.append('api_key', apiKey);
+                formData.append('voice', voice);
+                if (pdfFilterMode) {
+                    formData.append('filter_mode', pdfFilterMode.value);
+                }
+
+                pdfGenerateBtn.disabled = true;
+                pdfGenerateBtn.textContent = 'Generating...';
+                setPdfStatus('Uploading and processing PDF…', 'info');
+
+                try {
+                    const response = await fetch('/upload-pdf', {
+                        method: 'POST',
+                        body: formData,
+                    });
+                    const data = await response.json();
+
+                    if (!response.ok || !data.success) {
+                        const msg = data.error || 'PDF processing failed.';
+                        setPdfStatus(msg, 'error');
+                        return;
+                    }
+
+                    const chunks = data.chunks || [];
+                    if (!chunks.length) {
+                        setPdfStatus('No audio clips were generated from this PDF.', 'error');
+                        return;
+                    }
+
+                    // Ensure a heading exists if there were no server-side audio_sources
+                    const existingHeading = document.querySelector('.section-heading:nth-of-type(2)');
+                    if (!existingHeading) {
+                        const divider = document.createElement('div');
+                        divider.className = 'section-divider';
+                        const heading = document.createElement('h2');
+                        heading.className = 'section-heading';
+                        heading.textContent = 'Generated Audio';
+                        pdfAudioContainer.parentNode.insertBefore(divider, pdfAudioContainer);
+                        pdfAudioContainer.parentNode.insertBefore(heading, pdfAudioContainer);
+
+                        const actions = document.createElement('div');
+                            actions.className = 'audio-actions';
+                        const downloadAll = document.createElement('button');
+                        downloadAll.id = 'download-all-btn';
+                        downloadAll.className = 'primary-btn';
+                        downloadAll.textContent = 'Download All Audio Files';
+                        actions.appendChild(downloadAll);
+                        pdfAudioContainer.parentNode.insertBefore(actions, pdfAudioContainer);
+
+                        // Re-wire download-all handler
+                        downloadAll.addEventListener('click', function() {
+                            const audioItems = document.querySelectorAll('.audio-item');
+                            audioItems.forEach((item, index) => {
+                                const link = item.querySelector('a[download]');
+                                if (link) {
+                                    setTimeout(() => link.click(), index * 500);
+                                }
+                            });
+                        });
+                    }
+
+                    chunks.forEach((chunk) => {
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'audio-item';
+                        const title = document.createElement('h4');
+                        title.textContent = `PDF Chunk ${chunk.index + 1}: ${chunk.script}`;
+                        const audio = document.createElement('audio');
+                        audio.controls = true;
+                        const source = document.createElement('source');
+                        source.src = chunk.src;
+                        source.type = chunk.mime;
+                        audio.appendChild(source);
+                        const download = document.createElement('a');
+                        download.href = chunk.src;
+                        download.download = `pdf_chunk_${chunk.index + 1}.${chunk.extension}`;
+                        download.className = 'primary-btn';
+                        download.textContent = `Download PDF Chunk ${chunk.index + 1}`;
+                        wrapper.appendChild(title);
+                        wrapper.appendChild(audio);
+                        wrapper.appendChild(download);
+                        pdfAudioContainer.appendChild(wrapper);
+                    });
+
+                    setPdfStatus(`Generated ${chunks.length} audio clip(s) from PDF using ${data.filter_mode} filtering.`, 'success');
+                } catch (error) {
+                    setPdfStatus('PDF upload failed: ' + error.message, 'error');
+                } finally {
+                    pdfGenerateBtn.disabled = false;
+                    pdfGenerateBtn.textContent = 'Generate from PDF';
+                }
+            }
+
+            if (pdfGenerateBtn) {
+                pdfGenerateBtn.addEventListener('click', handlePdfGenerate);
+            }
+
+            function audioBufferToWav(buffer) {
+                const length = buffer.length * buffer.numberOfChannels * 2 + 44;
+                const arrayBuffer = new ArrayBuffer(length);
+                const view = new DataView(arrayBuffer);
+                const channels = [];
+                let offset = 0;
+                let pos = 0;
+                
+                const setUint16 = (data) => {
+                    view.setUint16(pos, data, true);
+                    pos += 2;
+                };
+                
+                const setUint32 = (data) => {
+                    view.setUint32(pos, data, true);
+                    pos += 4;
+                };
+                
+                setUint32(0x46464952);
+                setUint32(length - 8);
+                setUint32(0x45564157);
+                setUint32(0x20746d66);
+                setUint32(16);
+                setUint16(1);
+                setUint16(buffer.numberOfChannels);
+                setUint32(buffer.sampleRate);
+                setUint32(buffer.sampleRate * buffer.numberOfChannels * 2);
+                setUint16(buffer.numberOfChannels * 2);
+                setUint16(16);
+                setUint32(0x61746164);
+                setUint32(length - pos - 4);
+                
+                for (let i = 0; i < buffer.numberOfChannels; i++) {
+                    channels.push(buffer.getChannelData(i));
+                }
+                
+                while (pos < length) {
+                    for (let i = 0; i < buffer.numberOfChannels; i++) {
+                        let sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                        sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+                        view.setInt16(pos, sample, true);
+                        pos += 2;
+                    }
+                    offset++;
+                }
+                
+                return arrayBuffer;
+            }
+        });
+    </script>
+</body>
+</html>
