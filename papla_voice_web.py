@@ -37,6 +37,30 @@ AUDIO_EXTENSION_BY_MIME = {
 }
 
 
+def improve_text_for_tts(text: str) -> str:
+    """Improve text for TTS by ensuring proper punctuation to reduce robotic sound."""
+    if not text:
+        return text
+    
+    # Split text into sentences using regex
+    sentence_endings = re.compile(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s')
+    sentences = sentence_endings.split(text)
+    
+    processed_sentences = []
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if sentence:
+            # Capitalize first letter if it's lowercase
+            if sentence[0].islower():
+                sentence = sentence[0].upper() + sentence[1:]
+            # Add period if doesn't end with punctuation
+            if not sentence[-1] in '.!?':
+                sentence += '.'
+            processed_sentences.append(sentence)
+    
+    return ' '.join(processed_sentences)
+
+
 def get_default_api_key() -> str:
     """Return an API key from the environment if present."""
 
@@ -366,6 +390,7 @@ def make_app() -> Flask:
         audio_sources: List[dict] = []
 
         for idx, text in enumerate(chunks):
+            text = improve_text_for_tts(text)
             try:
                 payload = {"text": text, "model_id": DEFAULT_MODEL_ID}
                 tts_url = TTS_ENDPOINT_TEMPLATE.format(voice_id=voice)
@@ -414,6 +439,8 @@ def make_app() -> Flask:
         api_key = request.form.get("api_key", "").strip() or session.get("api_key", "")
         voice = request.form.get("voice", "").strip()
         text = request.form.get("text", "").strip() or "This is a sample of this voice."
+
+        text = improve_text_for_tts(text)
 
         if not api_key:
             return jsonify({"error": "API key is required."}), 400
@@ -536,6 +563,8 @@ def make_app() -> Flask:
             script_index = int(request.form.get("script_index", "0"))
             script = scripts[script_index] if script_index < len(scripts) else ""
             
+            script = improve_text_for_tts(script)
+            
             if not api_key:
                 error = "API key is required."
             elif not script:
@@ -607,6 +636,7 @@ def make_app() -> Flask:
                 for i, script in enumerate(scripts):
                     if not script:
                         continue
+                    script = improve_text_for_tts(script)
                     if len(script) > MAX_TTS_CHARACTERS:
                         error = f"Script {i+1} exceeds {MAX_TTS_CHARACTERS} characters."
                         break
