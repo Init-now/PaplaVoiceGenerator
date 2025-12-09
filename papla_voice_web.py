@@ -670,38 +670,12 @@ def make_app() -> Flask:
                     if len(script) > MAX_TTS_CHARACTERS:
                         script = script[:MAX_TTS_CHARACTERS]
                     
-                    try:
-                        headers = {
-                            "papla-api-key": api_key,
-                            "Content-Type": "application/json",
-                        }
-                        payload = {"text": script, "model_id": DEFAULT_MODEL_ID}
-                        tts_url = TTS_ENDPOINT_TEMPLATE.format(voice_id=voice)
-                        resp = requests.post(tts_url, headers=headers, json=payload, timeout=60)
-                        resp.raise_for_status()
-                        audio_bytes = resp.content
-                        if not audio_bytes:
-                            raise ValueError("Empty audio received from Papla Media API.")
-                        mime_type = resp.headers.get("Content-Type", DEFAULT_AUDIO_MIME) or DEFAULT_AUDIO_MIME
-                        if not mime_type.startswith("audio/"):
-                            mime_type = DEFAULT_AUDIO_MIME
-                        audio_extension = AUDIO_EXTENSION_BY_MIME.get(mime_type, "mp3")
-                        audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
-                        audio_src = f"data:{mime_type};base64,{audio_b64}"
-                        
-                        # Store the audio source with its index
-                        audio_sources.append({
-                            "index": i,
-                            "src": audio_src,
-                            "mime": mime_type,
-                            "extension": audio_extension,
-                            "script": script[:50] + "..." if len(script) > 50 else script
-                        })
-                        
-                        generated_count += 1
-                    except Exception as exc:
-                        error = f"Error generating script {i+1}: {str(exc)}"
+                    gen_error, _ = _generate_tts_audio(script, voice, api_key, i, audio_sources)
+                    if gen_error:
+                        error = f"Error generating script {i+1}: {gen_error}"
                         break
+                    
+                    generated_count += 1
                 
                 if not error:
                     status = f"Successfully generated {generated_count} voice(s)."
