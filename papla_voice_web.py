@@ -38,9 +38,12 @@ AUDIO_EXTENSION_BY_MIME = {
 
 
 def improve_text_for_tts(text: str) -> str:
-    """Improve text for TTS by ensuring proper punctuation to reduce robotic sound."""
+    """Improve text for TTS by ensuring proper punctuation and adding pauses for better pacing."""
     if not text:
         return text
+    
+    # Normalize whitespace
+    text = re.sub(r'\s+', ' ', text.strip())
     
     # Split text into sentences using regex
     sentence_endings = re.compile(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s')
@@ -53,6 +56,13 @@ def improve_text_for_tts(text: str) -> str:
             # Capitalize first letter if it's lowercase
             if sentence[0].islower():
                 sentence = sentence[0].upper() + sentence[1:]
+            
+            # Add commas before conjunctions for better pacing
+            sentence = re.sub(r'(\w{3,}) (and|but|or|so|because) ', r'\1, \2 ', sentence)
+            
+            # Add commas after introductory words
+            sentence = re.sub(r'(Well|Now|Then|However|Therefore|Moreover|Furthermore|Consequently|Meanwhile|Instead|Likewise|Similarly|Otherwise)( \w)', r'\1,\2', sentence)
+            
             # Add period if doesn't end with punctuation
             if not sentence[-1] in '.!?':
                 sentence += '.'
