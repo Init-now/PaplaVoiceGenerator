@@ -238,6 +238,19 @@ def _extract_pdf_lines(pdf_file) -> List[str]:
     return lines
 
 
+def _split_into_sentences(lines: List[str]) -> List[str]:
+    """Split lines into smaller sentence-like chunks for smoother TTS."""
+    sentences: List[str] = []
+    for line in lines:
+        # Split on sentence-ending punctuation followed by whitespace.
+        parts = re.split(r"(?<=[.!?])\s+", line)
+        for part in parts:
+            part = part.strip()
+            if part:
+                sentences.append(part)
+    return sentences
+
+
 def _is_speakable_line(line: str, mode: str = "strict") -> bool:
     """Return True if a line should be spoken, according to the chosen mode.
 
@@ -483,7 +496,9 @@ def make_app() -> Flask:
         except Exception as exc:  # pragma: no cover - defensive
             return jsonify({"error": f"Failed to read PDF: {exc}"}), 500
 
-        speakable_lines = [ln for ln in raw_lines if _is_speakable_line(ln)]
+        # Further split into sentence-like chunks to avoid single huge clips
+        sentences = _split_into_sentences(raw_lines)
+        speakable_lines = [ln for ln in sentences if _is_speakable_line(ln)]
         if not speakable_lines:
             return jsonify({"error": "No suitable lines found in PDF after filtering."}), 400
 
