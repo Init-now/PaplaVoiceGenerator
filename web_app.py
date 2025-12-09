@@ -218,19 +218,17 @@ def _extract_pdf_lines(pdf_file) -> List[str]:
         for raw_line in text.splitlines():
             line = raw_line.strip()
             if not line:
-                if buffer:
-                    lines.append(re.sub(r"\s+", " ", buffer.strip()))
-                    buffer = ""
                 continue
 
             # Merge hyphenated line breaks (e.g., "aesthet-" + "ic" -> "aesthetic")
-            if buffer.endswith("-"):
+            if buffer and buffer.endswith("-"):
                 buffer = buffer[:-1] + line.lstrip()
             else:
                 if buffer:
-                    buffer += " " + line
-                else:
-                    buffer = line
+                    cleaned = _clean_line(buffer)
+                    if cleaned:
+                        lines.append(cleaned)
+                buffer = line
 
         if buffer:
             cleaned = _clean_line(buffer)
