@@ -186,7 +186,7 @@ def _fetch_voice_options(api_key: str) -> List[VoiceOption]:
 
 
 def _extract_pdf_lines(pdf_file) -> List[str]:
-    """Extract raw text lines from an uploaded PDF file object.
+    """Extract text lines from PDF, merging wrapped lines for smoother TTS.
 
     Returns a flat list of lines (with basic whitespace normalization).
     """
@@ -195,6 +195,16 @@ def _extract_pdf_lines(pdf_file) -> List[str]:
         raise RuntimeError("PDF support is not available. Please install PyPDF2.")
 
     reader = PdfReader(pdf_file)
+    def _clean_line(line: str) -> str:
+        # Drop intensity annotations or standalone time stamps
+        if line.lower().startswith("intensity:"):
+            return ""
+        line = re.sub(r"^\d+(?:\.\d+)?s\s*", "", line)
+        line = re.sub(r"\s+\d+(?:\.\d+)?s\b", "", line)
+        line = re.sub(r"\s*matte→\s*\d+(?:\.\d+)?s", "", line, flags=re.IGNORECASE)
+        line = re.sub(r"\s+", " ", line).strip()
+        return line
+
     lines: List[str] = []
     for page in reader.pages:
         try:
@@ -203,10 +213,30 @@ def _extract_pdf_lines(pdf_file) -> List[str]:
             text = ""
         if not text:
             continue
+
+        buffer = ""
         for raw_line in text.splitlines():
             line = raw_line.strip()
-            if line:
-                lines.append(re.sub(r"\s+", " ", line))
+            if not line:
+                if buffer:
+                    lines.append(re.sub(r"\s+", " ", buffer.strip()))
+                    buffer = ""
+                continue
+
+            # Merge hyphenated line breaks (e.g., "aesthet-" + "ic" -> "aesthetic")
+            if buffer.endswith("-"):
+                buffer = buffer[:-1] + line.lstrip()
+            else:
+                if buffer:
+                    buffer += " " + line
+                else:
+                    buffer = line
+
+        if buffer:
+            cleaned = _clean_line(buffer)
+            if cleaned:
+                lines.append(cleaned)
+
     return lines
 
 
@@ -220,12 +250,24 @@ def _is_speakable_line(line: str, mode: str = "strict") -> bool:
         return False
 
     # Basic content checks
-    if len(line) < 5:
+    if len(line) < 3:
         return False
 
-    # Drop lines that are mostly non-letters (IDs, codes, etc.)
+    words = line.split()
     letters = sum(1 for ch in line if ch.isalpha())
-    if letters / max(len(line), 1) < (0.3 if mode == "loose" else 0.5):
+    letter_ratio = letters / max(len(line), 1)
+
+    # Allow short but meaningful single-word lines (e.g., "Momentum.", "Rare.")
+    if len(words) == 1:
+        if len(line) < 3 or letter_ratio < 0.5:
+            return False
+    else:
+        # Skip very short multi-word fragments
+        if len(words) < 3 and letter_ratio < 0.5:
+            return False
+
+    # Drop lines that are mostly non-letters (IDs, codes, etc.)
+    if letter_ratio < (0.3 if mode == "loose" else 0.5):
         return False
 
     # Timestamp patterns: 00:12, 01:02:03, [00:12], etc.
@@ -274,20 +316,21 @@ def _group_lines_for_tts(lines: List[str], max_characters: int, max_lines_per_ch
     i = 0
     while i < len(lines):
         current = lines[i]
-        # Try to append one more line if available and within limit
-        if (
-            i + 1 < len(lines)
-            and max_lines_per_chunk > 1
-            and len(current) + 1 + len(lines[i + 1]) <= max_characters
+        merged = 1
+        # Keep merging subsequent lines while under limits
+        while (
+            merged < max_lines_per_chunk
+            and (i + merged) < len(lines)
+            and len(current) + 1 + len(lines[i + merged]) <= max_characters
         ):
-            current = f"{current} {lines[i + 1]}"
-            i += 2
-        else:
-            # Single line chunk (or would exceed char limit with the next one)
-            # If a single line is too long, truncate to the hard limit.
-            if len(current) > max_characters:
-                current = current[: max_characters]
-            i += 1
+            current = f"{current} {lines[i + merged]}"
+            merged += 1
+        i += merged
+        # If a single line is too long, truncate to the hard limit.
+        if len(current) > max_characters:
+            current = current[: max_characters]
+        if current and current[-1] not in ".!?":
+            current += "."
         chunks.append(current)
     return chunks
 
@@ -413,14 +456,12 @@ def make_app() -> Flask:
         - pdf_file: uploaded PDF
         - api_key: optional (falls back to session)
         - voice: required
-        - filter_mode: "strict" or "loose" (defaults to "strict")
+        - filter_mode: deprecated (always strict/standard)
         """
 
         api_key = request.form.get("api_key", "").strip() or session.get("api_key", "")
         voice = request.form.get("voice", "").strip()
-        filter_mode = request.form.get("filter_mode", "strict").strip().lower()
-        if filter_mode not in {"strict", "loose"}:
-            filter_mode = "strict"
+        filter_mode = "standard"
 
         if not api_key:
             return jsonify({"error": "API key is required."}), 400
@@ -444,7 +485,7 @@ def make_app() -> Flask:
         except Exception as exc:  # pragma: no cover - defensive
             return jsonify({"error": f"Failed to read PDF: {exc}"}), 500
 
-        speakable_lines = [ln for ln in raw_lines if _is_speakable_line(ln, filter_mode)]
+        speakable_lines = [ln for ln in raw_lines if _is_speakable_line(ln)]
         if not speakable_lines:
             return jsonify({"error": "No suitable lines found in PDF after filtering."}), 400
 
