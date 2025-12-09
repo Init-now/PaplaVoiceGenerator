@@ -321,6 +321,16 @@
         }
         
         document.addEventListener('DOMContentLoaded', function() {
+            const apiKeyStorageKey = 'papla_api_key';
+            const apiKeyInput = document.getElementById('api_key');
+            // Prefill API key from localStorage if the field is empty
+            if (apiKeyInput && !apiKeyInput.value) {
+                const storedKey = localStorage.getItem(apiKeyStorageKey);
+                if (storedKey) {
+                    apiKeyInput.value = storedKey;
+                }
+            }
+
             const textareas = document.querySelectorAll('textarea');
             textareas.forEach(textarea => {
                 textarea.addEventListener('input', updateAllCharCounts);
@@ -357,6 +367,8 @@
                         if (data.success) {
                             connectionResult.innerHTML = `<div class="alert" style="background: rgba(34, 197, 94, 0.15); border-color: rgba(34, 197, 94, 0.4);">${data.message}</div>`;
                             setVoiceRefreshStatus(`Loaded ${data.voices?.length || 0} voices`, 'success');
+                            // Persist API key locally to keep it across reloads
+                            localStorage.setItem(apiKeyStorageKey, apiKey);
                             
                             // Update voice dropdown without reloading to preserve API key input
                             if (Array.isArray(data.voices) && voiceSelect) {

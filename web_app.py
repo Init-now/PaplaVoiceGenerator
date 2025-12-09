@@ -554,17 +554,18 @@ def make_app() -> Flask:
             detail = ""
             if resp is not None:
                 try:
-                    detail = resp.json().get("message", "")  # type: ignore[arg-type]
+                    body = resp.json()
+                    detail = body.get("message") or body.get("error") or str(body)
                 except ValueError:
                     detail = resp.text
-                error_msg = f"API error: {resp.status_code} {resp.reason}"
+                error = f"API error: {resp.status_code} {resp.reason}"
             else:
-                error_msg = f"API error: {exc}"
+                error = f"API error: {exc}"
             if detail:
                 detail = detail.strip()
                 if detail:
-                    error_msg = f"{error_msg} – {detail}"
-            return jsonify({"error": error_msg}), 502
+                    error = f"{error} – {detail}"
+            return jsonify({"error": error}), 502
         except requests.RequestException as exc:
             return jsonify({"error": f"Network error: {exc}"}), 502
         except ValueError as exc:
