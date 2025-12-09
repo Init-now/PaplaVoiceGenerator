@@ -47,6 +47,7 @@ def get_default_api_key() -> str:
 class VoiceOption:
     voice_id: str
     display_name: str
+    preview_url: Optional[str] = None
 
 
 def _parse_voice_entries(payload: object) -> List[VoiceOption]:
@@ -64,6 +65,7 @@ def _parse_voice_entries(payload: object) -> List[VoiceOption]:
                 for key, value in payload.items():
                     voice_id = key
                     display = value if isinstance(value, str) else None
+                    preview_url = None
                     if isinstance(value, dict):
                         voice_id = value.get("voice_id") or value.get("id") or key
                         display = (
@@ -72,11 +74,19 @@ def _parse_voice_entries(payload: object) -> List[VoiceOption]:
                             or value.get("label")
                             or value.get("title")
                         )
+                        preview_url = (
+                            value.get("preview_url")
+                            or value.get("sample_url")
+                            or value.get("preview")
+                            or value.get("audio_preview_url")
+                            or value.get("demo_url")
+                        )
                     if voice_id:
                         voices.append(
                             VoiceOption(
                                 voice_id=str(voice_id),
                                 display_name=str(display or voice_id),
+                                preview_url=str(preview_url) if preview_url else None,
                             )
                         )
                 if voices:
@@ -95,12 +105,21 @@ def _parse_voice_entries(payload: object) -> List[VoiceOption]:
                 or entry.get("label")
                 or entry.get("title")
             )
+            preview_url = (
+                entry.get("preview_url")
+                or entry.get("sample_url")
+                or entry.get("preview")
+                or entry.get("audio_preview_url")
+                or entry.get("demo_url")
+            )
         elif isinstance(entry, str):
             voice_id = entry
             display = entry
+            preview_url = None
         else:
             voice_id = str(entry)
             display = str(entry)
+            preview_url = None
 
         if not voice_id:
             continue
@@ -108,7 +127,13 @@ def _parse_voice_entries(payload: object) -> List[VoiceOption]:
         if voice_id_str in seen:
             continue
         seen.add(voice_id_str)
-        voices.append(VoiceOption(voice_id=voice_id_str, display_name=str(display or voice_id)))
+        voices.append(
+            VoiceOption(
+                voice_id=voice_id_str,
+                display_name=str(display or voice_id),
+                preview_url=str(preview_url) if preview_url else None,
+            )
+        )
 
     return voices
 
@@ -263,7 +288,14 @@ def make_app() -> Flask:
             return {
                 "success": True,
                 "message": f"Connection successful! Found {len(voices)} voices.",
-                "voices": [{"voice_id": v.voice_id, "display_name": v.display_name} for v in voices]
+                "voices": [
+                    {
+                        "voice_id": v.voice_id,
+                        "display_name": v.display_name,
+                        "preview_url": v.preview_url,
+                    }
+                    for v in voices
+                ],
             }
         except requests.HTTPError as exc:
             resp = exc.response

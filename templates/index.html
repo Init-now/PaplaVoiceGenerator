@@ -16,6 +16,12 @@
                         <div class="api-key-block">
                             <label for="api_key">API Key:</label>
                             <input type="password" id="api_key" name="api_key" value="{{ api_key }}" placeholder="Enter your Papla API key">
+                            <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
+                                <button type="button" id="test-connection-btn" class="secondary-btn" style="flex: 0 0 180px;">
+                                    Test Connection
+                                </button>
+                                <small id="connection-result" class="helper-text" style="flex: 1 1 200px;"></small>
+                            </div>
                         </div>
                     </form>
 
@@ -57,13 +63,17 @@
                         <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
                             <select id="voice" name="voice" style="flex: 0 0 220px;">
                                 {% for option in voices %}
-                                <option value="{{ option.voice_id }}" {% if option.voice_id == voice %}selected{% endif %}>{{ option.display_name }}</option>
+                                <option value="{{ option.voice_id }}" data-preview="{{ option.preview_url or '' }}" {% if option.voice_id == voice %}selected{% endif %}>{{ option.display_name }}</option>
                                 {% endfor %}
                             </select>
+                            <button type="button" id="refresh-voices-btn" class="secondary-btn" style="flex: 0 0 140px;">
+                                Refresh Voices
+                            </button>
                             <button type="button" id="voice-preview-btn" class="secondary-btn" style="flex: 0 0 160px;">
                                 Preview Voice
                             </button>
                         </div>
+                        <small id="voice-refresh-status" class="helper-text"></small>
                         <small id="voice-preview-status" class="helper-text"></small>
                         <audio id="voice-preview-audio" controls style="margin-top: 8px; width: 100%; display: none;">
                             <source id="voice-preview-source" src="" type="">
@@ -363,6 +373,85 @@
                 });
             }
 
+            // Voice list refresh
+            const refreshVoicesBtn = document.getElementById('refresh-voices-btn');
+            const voiceRefreshStatus = document.getElementById('voice-refresh-status');
+            const voiceSelect = document.getElementById('voice');
+
+            function setVoiceRefreshStatus(message, kind) {
+                if (!voiceRefreshStatus) return;
+                voiceRefreshStatus.textContent = message || '';
+                if (kind === 'error') {
+                    voiceRefreshStatus.style.color = '#fca5a5';
+                } else if (kind === 'success') {
+                    voiceRefreshStatus.style.color = '#6ee7b7';
+                } else {
+                    voiceRefreshStatus.style.color = '#cbd5f5';
+                }
+            }
+
+            function repopulateVoices(voices, previousVoice) {
+                if (!voiceSelect || !Array.isArray(voices)) return;
+                voiceSelect.innerHTML = '';
+                voices.forEach((v) => {
+                    const opt = document.createElement('option');
+                    opt.value = v.voice_id;
+                    opt.textContent = v.display_name || v.voice_id;
+                    if (v.preview_url) {
+                        opt.dataset.preview = v.preview_url;
+                    }
+                    if (previousVoice && v.voice_id === previousVoice) {
+                        opt.selected = true;
+                    }
+                    voiceSelect.appendChild(opt);
+                });
+                // If previous selection no longer exists, pick first
+                if (!voiceSelect.value && voiceSelect.options.length) {
+                    voiceSelect.selectedIndex = 0;
+                }
+            }
+
+            async function handleRefreshVoices() {
+                if (!refreshVoicesBtn) return;
+                const apiKeyInput = document.getElementById('api_key');
+                const apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+                if (!apiKey) {
+                    setVoiceRefreshStatus('Enter an API key before refreshing.', 'error');
+                    return;
+                }
+
+                const currentVoice = voiceSelect ? voiceSelect.value : '';
+                refreshVoicesBtn.disabled = true;
+                refreshVoicesBtn.textContent = 'Refreshing...';
+                setVoiceRefreshStatus('Refreshing voices…', 'info');
+
+                const formData = new FormData();
+                formData.append('api_key', apiKey);
+
+                try {
+                    const response = await fetch('/test-connection', {
+                        method: 'POST',
+                        body: formData,
+                    });
+                    const data = await response.json();
+                    if (!response.ok || !data.success) {
+                        setVoiceRefreshStatus(data.error || 'Failed to refresh voices.', 'error');
+                        return;
+                    }
+                    repopulateVoices(data.voices || [], currentVoice);
+                    setVoiceRefreshStatus(`Loaded ${data.voices?.length || 0} voices.`, 'success');
+                } catch (err) {
+                    setVoiceRefreshStatus('Voice refresh failed: ' + err.message, 'error');
+                } finally {
+                    refreshVoicesBtn.disabled = false;
+                    refreshVoicesBtn.textContent = 'Refresh Voices';
+                }
+            }
+
+            if (refreshVoicesBtn) {
+                refreshVoicesBtn.addEventListener('click', handleRefreshVoices);
+            }
+
             // Voice audio preview
             const voicePreviewBtn = document.getElementById('voice-preview-btn');
             const voicePreviewStatus = document.getElementById('voice-preview-status');
@@ -381,67 +470,45 @@
                 }
             }
 
-            async function handleVoicePreview() {
+            function handleVoicePreview() {
                 if (!voicePreviewBtn) return;
                 const apiKeyInput = document.getElementById('api_key');
-                const voiceSelect = document.getElementById('voice');
                 const apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
                 const voice = voiceSelect ? voiceSelect.value : '';
+                const selectedOption = voiceSelect ? voiceSelect.selectedOptions[0] : null;
+                const previewUrl = selectedOption ? selectedOption.dataset.preview : '';
 
-                if (!apiKey) {
-                    setVoicePreviewStatus('API key is required before previewing.', 'error');
-                    return;
-                }
                 if (!voice) {
                     setVoicePreviewStatus('Please select a voice to preview.', 'error');
                     return;
                 }
-
-                const formData = new FormData();
-                formData.append('api_key', apiKey);
-                formData.append('voice', voice);
+                if (!previewUrl) {
+                    setVoicePreviewStatus('No preview URL provided for this voice.', 'error');
+                    return;
+                }
 
                 const originalText = voicePreviewBtn.textContent;
                 voicePreviewBtn.disabled = true;
                 voicePreviewBtn.textContent = 'Previewing...';
-                setVoicePreviewStatus('Generating preview…', 'info');
+                setVoicePreviewStatus('Loading preview…', 'info');
 
-                try {
-                    const response = await fetch('/preview-voice', {
-                        method: 'POST',
-                        body: formData,
-                    });
-                    const data = await response.json();
-
-                    if (!response.ok || !data.success) {
-                        const msg = data.error || 'Voice preview failed.';
-                        setVoicePreviewStatus(msg, 'error');
-                        return;
-                    }
-
-                    if (voicePreviewAudio && voicePreviewSource) {
-                        voicePreviewSource.src = data.src;
-                        voicePreviewSource.type = data.mime;
-                        voicePreviewAudio.style.display = 'block';
-                        voicePreviewAudio.load();
-                        try {
-                            await voicePreviewAudio.play();
-                        } catch (playErr) {
-                            // Ignore autoplay errors; user can press play manually.
-                        }
-                    }
-
-                    setVoicePreviewStatus('Playing voice preview.', 'success');
-                } catch (error) {
-                    setVoicePreviewStatus('Voice preview failed: ' + error.message, 'error');
-                } finally {
-                    voicePreviewBtn.disabled = false;
-                    voicePreviewBtn.textContent = originalText;
+                if (voicePreviewAudio && voicePreviewSource) {
+                    voicePreviewSource.src = previewUrl;
+                    voicePreviewSource.type = '';
+                    voicePreviewAudio.style.display = 'block';
+                    voicePreviewAudio.load();
+                    voicePreviewAudio.play().then(
+                        () => setVoicePreviewStatus('Playing voice preview.', 'success'),
+                        () => setVoicePreviewStatus('Preview ready. Press play if it did not start.', 'info'),
+                    );
                 }
+
+                voicePreviewBtn.disabled = false;
+                voicePreviewBtn.textContent = originalText;
             }
 
             if (voicePreviewBtn) {
-                voicePreviewBtn.addEventListener('click', handleVoicePreview);
+                voicePreviewBtn.addEventListener('click', () => handleVoicePreview());
             }
             
             const addScriptBtn = document.getElementById('add-script-btn');
