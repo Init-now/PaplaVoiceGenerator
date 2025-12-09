@@ -463,8 +463,31 @@ def make_app() -> Flask:
             try:
                 payload = {"text": text, "model_id": DEFAULT_MODEL_ID}
                 tts_url = TTS_ENDPOINT_TEMPLATE.format(voice_id=voice)
-                resp = requests.post(tts_url, headers=headers, json=payload, timeout=60)
-                resp.raise_for_status()
+                try:
+                    resp = requests.post(tts_url, headers=headers, json=payload, timeout=60)
+                    resp.raise_for_status()
+                except requests.HTTPError as exc:
+                    detail = ""
+                    resp = exc.response
+                    if resp is not None:
+                        try:
+                            body = resp.json()
+                            detail = body.get("message") or body.get("error") or str(body)
+                        except ValueError:
+                            detail = resp.text
+                        error = f"API error: {resp.status_code} {resp.reason}"
+                    else:
+                        error = f"API error: {exc}"
+                    if detail:
+                        detail = detail.strip()
+                        if detail:
+                            error = f"{error} – {detail}"
+                    return jsonify({
+                        "error": f"Error generating audio for chunk {idx + 1}: {error}",
+                        "generated": audio_sources,
+                        "request": {"voice": voice, "model_id": DEFAULT_MODEL_ID, "text_len": len(text)},
+                    }), 400
+
                 audio_bytes = resp.content
                 if not audio_bytes:
                     raise ValueError("Empty audio received from Papla Media API.")
@@ -489,6 +512,7 @@ def make_app() -> Flask:
                 return jsonify({
                     "error": f"Error generating audio for chunk {idx + 1}: {exc}",
                     "generated": audio_sources,
+                    "request": {"voice": voice, "model_id": DEFAULT_MODEL_ID, "text_len": len(text)},
                 }), 500
 
         return jsonify(
