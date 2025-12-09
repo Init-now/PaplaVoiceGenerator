@@ -591,6 +591,7 @@ def make_app() -> Flask:
                     error = "Please select a voice."
                 else:
                     try:
+                        # TTS API call
                         headers = {
                             "papla-api-key": api_key,
                             "Content-Type": "application/json",
