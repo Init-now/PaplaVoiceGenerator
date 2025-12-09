@@ -285,7 +285,7 @@ def _group_lines_for_tts(lines: List[str], max_characters: int, max_lines_per_ch
             # Single line chunk (or would exceed char limit with the next one)
             # If a single line is too long, truncate to the hard limit.
             if len(current) > max_characters:
-                current = current[: max_characters - 1] + "…"
+                current = current[: max_characters]
             i += 1
         chunks.append(current)
     return chunks
@@ -401,6 +401,8 @@ def make_app() -> Flask:
 
         for idx, text in enumerate(chunks):
             text = improve_text_for_tts(text)
+            if len(text) > MAX_TTS_CHARACTERS:
+                text = text[:MAX_TTS_CHARACTERS]
             try:
                 payload = {"text": text, "model_id": DEFAULT_MODEL_ID}
                 tts_url = TTS_ENDPOINT_TEMPLATE.format(voice_id=voice)
@@ -456,6 +458,9 @@ def make_app() -> Flask:
             return jsonify({"error": "API key is required."}), 400
         if not voice:
             return jsonify({"error": "Please select a voice."}), 400
+
+        if len(text) > MAX_TTS_CHARACTERS:
+            text = text[:MAX_TTS_CHARACTERS]
 
         headers = {
             "papla-api-key": api_key,
@@ -579,12 +584,13 @@ def make_app() -> Flask:
                 error = "API key is required."
             elif not script:
                 error = "Please enter some text to synthesize."
-            elif len(script) > MAX_TTS_CHARACTERS:
-                error = f"Text must be {MAX_TTS_CHARACTERS} characters or fewer."
-            elif not voice:
-                error = "Please select a voice."
             else:
-                try:
+                if len(script) > MAX_TTS_CHARACTERS:
+                    script = script[:MAX_TTS_CHARACTERS]
+                if not voice:
+                    error = "Please select a voice."
+                else:
+                    try:
                     headers = {
                         "papla-api-key": api_key,
                         "Content-Type": "application/json",
@@ -648,8 +654,7 @@ def make_app() -> Flask:
                         continue
                     script = improve_text_for_tts(script)
                     if len(script) > MAX_TTS_CHARACTERS:
-                        error = f"Script {i+1} exceeds {MAX_TTS_CHARACTERS} characters."
-                        break
+                        script = script[:MAX_TTS_CHARACTERS]
                     
                     try:
                         headers = {
