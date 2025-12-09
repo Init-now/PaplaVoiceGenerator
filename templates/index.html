@@ -334,7 +334,8 @@
             
             if (testConnectionBtn) {
                 testConnectionBtn.addEventListener('click', function() {
-                    const apiKey = document.getElementById('api_key').value;
+                    const apiKeyInput = document.getElementById('api_key');
+                    const apiKey = apiKeyInput.value;
                     
                     if (!apiKey) {
                         connectionResult.innerHTML = '<div class="alert">Please enter an API key first.</div>';
@@ -355,10 +356,21 @@
                     .then(data => {
                         if (data.success) {
                             connectionResult.innerHTML = `<div class="alert" style="background: rgba(34, 197, 94, 0.15); border-color: rgba(34, 197, 94, 0.4);">${data.message}</div>`;
-                            // Refresh the page to update the voices list
-                            setTimeout(() => {
-                                window.location.reload();
-                            }, 1500);
+                            setVoiceRefreshStatus(`Loaded ${data.voices?.length || 0} voices`, 'success');
+                            
+                            // Update voice dropdown without reloading to preserve API key input
+                            if (Array.isArray(data.voices) && voiceSelect) {
+                                voiceSelect.innerHTML = '';
+                                data.voices.forEach(v => {
+                                    const opt = document.createElement('option');
+                                    opt.value = v.voice_id;
+                                    opt.textContent = v.display_name || v.voice_id;
+                                    if (v.preview_url) {
+                                        opt.dataset.preview = v.preview_url;
+                                    }
+                                    voiceSelect.appendChild(opt);
+                                });
+                            }
                         } else {
                             connectionResult.innerHTML = `<div class="alert">${data.error}</div>`;
                         }
