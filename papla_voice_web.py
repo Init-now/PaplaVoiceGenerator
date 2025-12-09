@@ -292,6 +292,62 @@ def _group_lines_for_tts(lines: List[str], max_characters: int, max_lines_per_ch
     return chunks
 
 
+def _generate_tts_audio(script: str, voice_id: str, api_key: str, script_index: int, audio_sources: List[dict]) -> tuple[Optional[str], Optional[str]]:
+    """Helper function to generate TTS audio and append to sources list."""
+    try:
+        # TTS API call
+        headers = {
+            "papla-api-key": api_key,
+            "Content-Type": "application/json",
+        }
+        payload = {"text": script, "model_id": DEFAULT_MODEL_ID}
+        tts_url = TTS_ENDPOINT_TEMPLATE.format(voice_id=voice_id)
+        resp = requests.post(tts_url, headers=headers, json=payload, timeout=60)
+        resp.raise_for_status()
+        audio_bytes = resp.content
+        if not audio_bytes:
+            raise ValueError("Empty audio received from Papla Media API.")
+        mime_type = resp.headers.get("Content-Type", DEFAULT_AUDIO_MIME) or DEFAULT_AUDIO_MIME
+        if not mime_type.startswith("audio/"):
+            mime_type = DEFAULT_AUDIO_MIME
+        audio_extension = AUDIO_EXTENSION_BY_MIME.get(mime_type, "mp3")
+        audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+        audio_src = f"data:{mime_type};base64,{audio_b64}"
+        
+        # Store the audio source with its index
+        audio_sources.append({
+            "index": script_index,
+            "src": audio_src,
+            "mime": mime_type,
+            "extension": audio_extension,
+            "script": script[:50] + "..." if len(script) > 50 else script
+        })
+        
+        return None, f"Voice generated successfully for script {script_index + 1}."
+    except requests.HTTPError as exc:
+        resp = exc.response
+        detail = ""
+        if resp is not None:
+            try:
+                detail = resp.json().get("message", "")  # type: ignore[arg-type]
+            except ValueError:
+                detail = resp.text
+            error = f"API error: {resp.status_code} {resp.reason}"
+        else:
+            error = f"API error: {exc}"
+        if detail:
+            detail = detail.strip()
+            if detail:
+                error = f"{error} – {detail}"
+        return error, None
+    except requests.RequestException as exc:
+        return f"Network error: {exc}", None
+    except ValueError as exc:
+        return str(exc), None
+    except Exception as exc:
+        return f"Unexpected error: {str(exc)}", None
+
+
 def make_app() -> Flask:
     # Get absolute paths to avoid path resolution issues
     current_dir = os.path.dirname(os.path.abspath(__file__))
