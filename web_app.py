@@ -239,16 +239,147 @@ def _extract_pdf_lines(pdf_file) -> List[str]:
 
 
 def _split_into_sentences(lines: List[str]) -> List[str]:
-    """Split lines into smaller sentence-like chunks for smoother TTS."""
+    """Split lines into sentence-like chunks, avoiding cuts inside abbreviations or numbers."""
+
+    abbreviations = {
+        "mr.",
+        "mr",
+        "mrs.",
+        "mrs",
+        "ms.",
+        "ms",
+        "dr.",
+        "dr",
+        "drs.",
+        "drs",
+        "prof.",
+        "prof",
+        "sr.",
+        "jr.",
+        "jr",
+        "st.",
+        "no.",
+        "fig.",
+        "approx.",
+        "etc.",
+        "e.g.",
+        "i.e.",
+        "vs.",
+        "u.s.",
+        "u.k.",
+        "ph.d.",
+        "inc.",
+        "ltd.",
+        "co.",
+        "corp.",
+        "vol.",
+        "al.",
+    }
+
+    def _should_split(text: str, idx: int) -> bool:
+        """Return True if we should split after punctuation ending at idx."""
+        prev_chunk = text[: idx + 1]
+        # Look back to the last word before punctuation
+        prev_word = prev_chunk.rstrip().split(" ")[-1]
+        prev_word_stripped = prev_word.strip('"\')').lower()
+        min_chunk_len = 25  # avoid carving out extremely short chunks
+
+        # Ellipses or double punctuation (e.g., "...", "?!")
+        if text[idx] == "." and (
+            (idx > 0 and text[idx - 1] == ".") or (idx + 1 < len(text) and text[idx + 1] == ".")
+        ):
+            return False
+        if text[idx] == "?" and idx + 1 < len(text) and text[idx + 1] in {"!", "?"}:
+            return False
+        if text[idx] == "!" and idx + 1 < len(text) and text[idx + 1] in {"!", "?"}:
+            return False
+
+        # Avoid splitting after abbreviations or single-letter initials (e.g., "A.")
+        if prev_word_stripped in abbreviations or re.match(r"^[a-z]\.$", prev_word_stripped):
+            return False
+        # Avoid splitting acronyms (NASA.), capitalized initials (J.K.), or all-caps short words
+        if re.match(r"^[A-Z]{2,}\.$", prev_word) or re.match(r"^[A-Z]\.[A-Z]\.$", prev_word):
+            return False
+
+        # Avoid splitting decimals or numbered lists like "3.14" or "Section 2.1"
+        if re.match(r"^\d+\.\d+$", prev_word_stripped):
+            return False
+
+        # Avoid splitting enumerations like "1." or "a." followed by a word on the same line
+        if re.match(r"^[0-9a-z]\.$", prev_word_stripped):
+            return False
+
+        # Avoid splitting if the chunk so far is very short
+        if len(prev_chunk.strip()) < min_chunk_len:
+            return False
+
+        # Look ahead to ensure likely sentence start (uppercase or quote/paren)
+        remainder = text[idx + 1 :]
+        if not remainder:
+            return True
+        stripped = remainder.lstrip()
+        if not stripped:
+            return True
+        next_char = stripped[0]
+        # If the next visible char is an opening quote/paren, peek after it
+        if next_char in {'"', "'", "“", "‘", "("}:
+            stripped = stripped[1:].lstrip()
+            if not stripped:
+                return True
+            next_char = stripped[0]
+        return next_char.isupper()
+
     sentences: List[str] = []
     for line in lines:
-        # Split on sentence-ending punctuation followed by whitespace.
-        parts = re.split(r"(?<=[.!?])\s+", line)
-        for part in parts:
-            part = part.strip()
-            if part:
-                sentences.append(part)
-    return sentences
+        working = line.strip()
+        if not working:
+            continue
+
+        start = 0
+        for match in re.finditer(r"[.!?]", working):
+            end_idx = match.end() - 1
+            if _should_split(working, end_idx):
+                chunk = working[start : end_idx + 1].strip()
+                if chunk:
+                    sentences.append(chunk)
+                start = end_idx + 1
+
+        # Capture any trailing text after the last accepted boundary
+        tail = working[start:].strip()
+        if tail:
+            sentences.append(tail)
+
+    # Merge fragments to keep sentences natural and avoid abrupt cuts
+    smoothed: List[str] = []
+    if sentences:
+        current = sentences[0]
+        for fragment in sentences[1:]:
+            starts_with_connector = fragment.split()[0].lower() in {
+                "and",
+                "but",
+                "or",
+                "so",
+                "because",
+                "while",
+                "whereas",
+                "however",
+                "therefore",
+            }
+            merge_needed = (
+                len(current) < 90  # prefer longer, natural-length sentences
+                or len(fragment) < 70
+                or starts_with_connector
+                or (fragment and fragment[0].islower())
+                or fragment.strip().startswith((";", ":"))
+            )
+            if merge_needed:
+                current = f"{current} {fragment}".strip()
+            else:
+                smoothed.append(current)
+                current = fragment
+        smoothed.append(current)
+
+    return smoothed
 
 
 def _is_speakable_line(line: str, mode: str = "strict") -> bool:
@@ -323,6 +454,38 @@ def _is_speakable_line(line: str, mode: str = "strict") -> bool:
 def _group_lines_for_tts(lines: List[str], max_characters: int, max_lines_per_chunk: int = 2) -> List[str]:
     """Group lines into chunks for TTS, up to max_lines_per_chunk and character limit."""
 
+    def _split_safely(text: str) -> tuple[str, Optional[str]]:
+        """Split text near the character limit at a safe boundary; return (head, tail)."""
+        if len(text) <= max_characters:
+            return text, None
+        window = text[: max_characters + 1]
+        # Keep ellipses intact if they straddle the boundary
+        ellipsis_idx = window.rfind("...")
+        if ellipsis_idx != -1 and ellipsis_idx >= len(window) - 6:
+            head = window[: ellipsis_idx + 3].rstrip()
+            tail = text[len(head):].lstrip()
+            return head, tail or None
+        # Prefer punctuation boundaries, then spaces
+        for pattern in [r"(?s)^(.{40,}?)([.!?;:])\s", r"(?s)^(.{60,}?)\s"]:
+            match = re.match(pattern, window)
+            if match:
+                head = (match.group(1) + match.group(2)).strip()
+                tail = text[len(head):].lstrip()
+                return head, tail or None
+        # Fallback: hard cut
+        head = window[:max_characters].rstrip()
+        tail = text[len(head):].lstrip()
+        return head, tail or None
+
+    def _ensure_terminal_punct(s: str) -> str:
+        if not s:
+            return s
+        if s.endswith("..."):
+            return s
+        if s[-1] in ".!?;:":
+            return s
+        return s + "."
+
     chunks: List[str] = []
     i = 0
     while i < len(lines):
@@ -337,12 +500,15 @@ def _group_lines_for_tts(lines: List[str], max_characters: int, max_lines_per_ch
             current = f"{current} {lines[i + merged]}"
             merged += 1
         i += merged
-        # If a single line is too long, truncate to the hard limit.
-        if len(current) > max_characters:
-            current = current[: max_characters]
-        if current and current[-1] not in ".!?":
-            current += "."
-        chunks.append(current)
+        # Split overly long chunks at safe boundaries
+        working = current
+        while True:
+            head, tail = _split_safely(working)
+            head = _ensure_terminal_punct(head.strip())
+            chunks.append(head)
+            if not tail:
+                break
+            working = tail
     return chunks
 
 
