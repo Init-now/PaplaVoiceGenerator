@@ -26,7 +26,8 @@ API_BASE_URL = "https://api.papla.media"
 VOICES_ENDPOINT = f"{API_BASE_URL}/v1/voices"
 TTS_ENDPOINT_TEMPLATE = f"{API_BASE_URL}/v1/text-to-speech/{{voice_id}}"
 DEFAULT_MODEL_ID = "papla_p1"
-MAX_TTS_CHARACTERS = 800
+# Use a slightly conservative limit to avoid API 400s on long chunks
+MAX_TTS_CHARACTERS = 700
 DEFAULT_AUDIO_MIME = "audio/mpeg"
 AUDIO_EXTENSION_BY_MIME = {
     "audio/mpeg": "mp3",
@@ -70,6 +71,18 @@ def improve_text_for_tts(text: str) -> str:
             processed_sentences.append(sentence)
     
     return ' '.join(processed_sentences)
+
+
+def sanitize_tts_text(text: str) -> str:
+    """Normalize text to reduce TTS API errors."""
+    if not text:
+        return text
+    # Collapse very long runs of punctuation that can upset TTS
+    text = re.sub(r"\.{4,}", "...", text)
+    text = re.sub(r"[!?]{4,}", lambda m: m.group(0)[0] * 3, text)
+    # Trim stray leading/trailing punctuation
+    text = text.strip(" \t\r\n")
+    return text
 
 
 def get_default_api_key() -> str:
@@ -677,7 +690,7 @@ def make_app() -> Flask:
         audio_sources: List[dict] = []
 
         for idx, text in enumerate(chunks):
-            text = improve_text_for_tts(text)
+            text = sanitize_tts_text(improve_text_for_tts(text))
             if len(text) > MAX_TTS_CHARACTERS:
                 text = text[:MAX_TTS_CHARACTERS]
             try:
